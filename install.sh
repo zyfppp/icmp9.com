@@ -13,36 +13,81 @@ warn() { printf "${YELLOW}%s${NC}\n" "$1"; }
 error() { printf "${RED}%s${NC}\n" "$1"; }
 
 printf "${GREEN}=============================================${NC}\n"
-printf "${GREEN}        ICMP9聚合落地节点部署脚本                ${NC}\n"
-printf "${GREEN}     (支持 Debian / Ubuntu / Alpine)          ${NC}\n"
+printf "${GREEN}      ICMP9全球落地聚合节点部署脚本              ${NC}\n"
+printf "${GREEN}     支持 Debian / Ubuntu / Alpine            ${NC}\n"
 printf "${GREEN}=============================================${NC}\n"
 
+# 0. 检查是否为 Root 用户
+if [ "$(id -u)" != "0" ]; then
+    error "❌ 请使用 Root 用户运行此脚本！(输入 'sudo -i' 切换)"
+    exit 1
+fi
+
 # 1. 环境检测与 Docker 安装
+# 刷新命令缓存
+hash -r >/dev/null 2>&1
+
 if ! command -v docker >/dev/null 2>&1; then
     warn "⚠️ 未检测到 Docker，正在识别系统并安装..."
+    
     if [ -f /etc/alpine-release ]; then
+        # Alpine Linux
         apk update
         apk add docker docker-cli-compose
-        addgroup root docker >/dev/null 2>&1
-        rc-service docker start
         rc-update add docker default
+        rc-service docker start
     else
-        apt-get update
-        apt-get install -y curl
+        # Debian / Ubuntu / CentOS
+        if ! command -v curl >/dev/null 2>&1; then
+            apt-get update && apt-get install -y curl || yum install -y curl
+        fi
         curl -fsSL https://get.docker.com | sh
         systemctl enable --now docker
     fi
+
+    # --- 安装后再次检测 ---
+    hash -r >/dev/null 2>&1
+    if ! command -v docker >/dev/null 2>&1; then
+        error "❌ Docker 自动安装失败！"
+        warn "请尝试手动执行安装命令: curl -fsSL https://get.docker.com | sh"
+        exit 1
+    fi
+    info "✅ Docker 安装成功"
+fi
+
+# 等待 Docker 服务就绪
+info "⏳ 等待 Docker 服务启动..."
+for i in $(seq 1 15); do
+    if docker info >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+
+if ! docker info >/dev/null 2>&1; then
+    error "❌ Docker 服务未就绪，请稍后重试"
+    exit 1
 fi
 
 # 检查 Docker Compose
 if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
     warn "⚠️ 未检测到 Docker Compose，正在安装..."
+    
     if [ -f /etc/alpine-release ]; then
         apk add docker-cli-compose
     else
-        apt-get update
-        apt-get install -y docker-compose-plugin
+        # 尝试安装插件版
+        apt-get update && apt-get install -y docker-compose-plugin || \
+        # 如果 apt 失败，尝试作为 python 包或二进制
+        warn "尝试通过包管理器安装插件失败，尝试依赖 Docker CLI 插件..."
     fi
+    
+    # 再次检查
+    if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
+        error "❌ Docker Compose 安装失败！"
+        exit 1
+    fi
+    info "✅ Docker Compose 安装成功"
 fi
 
 # 2. 创建工作目录
@@ -68,7 +113,7 @@ read -r MODE_INPUT
 [ -z "$MODE_INPUT" ] && MODE_INPUT="1"
 
 if [ "$MODE_INPUT" = "2" ]; then
-    # --- 固定隧道模式 (选项2) ---
+    # --- 固定隧道模式 ---
     TUNNEL_MODE="fixed"
     while [ -z "$SERVER_HOST" ]; do
         printf "   -> 请输入绑定域名 (SERVER_HOST) (必填): "
@@ -80,14 +125,14 @@ if [ "$MODE_INPUT" = "2" ]; then
         read -r TOKEN
     done
 else
-    # --- 临时隧道模式 (选项1或默认) ---
+    # --- 临时隧道模式 ---
     TUNNEL_MODE="temp"
     SERVER_HOST="" # 留空
     TOKEN=""       # 留空
     info "   -> 已选择临时隧道，域名将在启动后自动生成。"
 fi
 
-# IPv6 设置
+# IPv6 设置 (忽略大小写)
 printf "\n3. 是否仅 IPv6 (True/False) [默认: False]: "
 read -r IPV6_INPUT
 IPV6_ONLY=$(echo "${IPV6_INPUT:-false}" | tr '[:upper:]' '[:lower:]')
@@ -123,12 +168,19 @@ services:
       - ./data/subscribe:/root/subscribe
 EOF
 
-# 5. 启动服务
-DOCKER_COMPOSE_CMD="docker compose"
-if ! docker compose version >/dev/null 2>&1; then
+# 5. 确定 Docker Compose 命令
+# 再次动态检测，防止安装后变量未更新
+DOCKER_COMPOSE_CMD=""
+if docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
     DOCKER_COMPOSE_CMD="docker-compose"
+else
+    error "❌ 无法找到 docker compose 或 docker-compose 命令，请检查安装。"
+    exit 1
 fi
 
+# 6. 启动服务
 printf "\n是否立即启动容器？(y/n) [默认: y]: "
 read -r START_NOW
 [ -z "$START_NOW" ] && START_NOW="y"
@@ -149,62 +201,64 @@ if [ "$START_NOW" = "y" ] || [ "$START_NOW" = "Y" ]; then
         fi
     fi
 
-    # --- 2: 强制拉取最新镜像 ---
+    # --- 强制更新 ---
     info "⬇️ 正在拉取最新镜像 (nap0o/icmp9:latest)..."
-    $DOCKER_COMPOSE_CMD pull
-    
-    info "🚀 正在启动容器..."
-    $DOCKER_COMPOSE_CMD up -d
-    
-    if [ $? -eq 0 ]; then
-        printf "\n${GREEN}✅ ICMP9 部署成功！${NC}\n"
-        
-        if [ "$TUNNEL_MODE" = "fixed" ]; then
-            # --- 固定隧道：直接显示 ---
-            printf "\n${GREEN}✈️  节点订阅地址:${NC}\n"
-            printf "${YELLOW}https://${SERVER_HOST}/${API_KEY}${NC}\n\n"
-        else
-            # --- 临时隧道：自动轮询等待日志 ---
-            printf "\n${CYAN}⏳ 正在等待 Cloudflare 分配临时域名 (超时60秒)...${NC}\n"
-            printf "${CYAN}   (请稍候，系统正在从日志中抓取订阅链接)${NC}\n"
-            
-            TIMEOUT=60
-            INTERVAL=3
-            ELAPSED=0
-            FOUND_URL=""
-
-            while [ $ELAPSED -lt $TIMEOUT ]; do
-                # 尝试从日志中提取包含 trycloudflare.com 的 URL
-                # 使用 grep -oE 精确提取 URL 部分
-                LOG_URL=$(docker logs icmp9 2>&1 | grep -oE "https://[a-zA-Z0-9-]+\.trycloudflare\.com/${API_KEY}" | tail -n 1)
-                
-                if [ -n "$LOG_URL" ]; then
-                    FOUND_URL="$LOG_URL"
-                    break
-                fi
-                
-                # 打印进度点
-                printf "."
-                sleep $INTERVAL
-                ELAPSED=$((ELAPSED + INTERVAL))
-            done
-            
-            # 换行
-            echo ""
-
-            if [ -n "$FOUND_URL" ]; then
-                printf "\n${GREEN}临时域名获取成功！${NC}\n"
-                printf "${GREEN}✅ 节点订阅地址:${NC}\n"
-                printf "${YELLOW}%s${NC}\n\n" "$FOUND_URL"
-            else
-                printf "\n${YELLOW}⚠️  自动获取超时 (网络可能较慢)。${NC}\n"
-                printf "请稍后手动执行此命令查看地址：\n"
-                printf "${CYAN}docker logs icmp9 | grep 'https://'${NC}\n\n"
-            fi
-        fi
-    else
-        error "❌ 启动失败。"
+    if ! $DOCKER_COMPOSE_CMD pull; then
+        error "❌ 镜像拉取失败，请检查网络或 Docker 配置。"
+        exit 1
     fi
+    
+    # --- 启动 ---
+    info "🚀 正在启动容器..."
+    if ! $DOCKER_COMPOSE_CMD up -d; then
+        error "❌ 容器启动命令执行失败。"
+        exit 1
+    fi
+    
+    # 成功判断
+    printf "\n${GREEN}✅ ICMP9 部署成功！${NC}\n"
+    
+    if [ "$TUNNEL_MODE" = "fixed" ]; then
+        # --- 固定隧道 ---
+        printf "\n${GREEN}✈️ 节点订阅地址:${NC}\n"
+        printf "${YELLOW}https://${SERVER_HOST}/${API_KEY}${NC}\n\n"
+    else
+        # --- 临时隧道 ---
+        printf "\n${CYAN}⏳ 正在等待 Cloudflare 分配临时域名 (超时60秒)...${NC}\n"
+        printf "${CYAN}   (请稍候，系统正在从日志中抓取订阅链接)${NC}\n"
+        
+        TIMEOUT=60
+        INTERVAL=3
+        ELAPSED=0
+        FOUND_URL=""
+
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+            # 抓取日志
+            LOG_URL=$(docker logs icmp9 2>&1 | grep -oE "https://[a-zA-Z0-9-]+\.trycloudflare\.com/${API_KEY}" | tail -n 1)
+            
+            if [ -n "$LOG_URL" ]; then
+                FOUND_URL="$LOG_URL"
+                break
+            fi
+            
+            printf "."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+        done
+        
+        echo ""
+
+        if [ -n "$FOUND_URL" ]; then
+            printf "\n${GREEN}✅ 临时域名获取成功！${NC}\n"
+            printf "${GREEN}✈️ 节点订阅地址:${NC}\n"
+            printf "${YELLOW}%s${NC}\n\n" "$FOUND_URL"
+        else
+            printf "\n${YELLOW}⚠️ 自动获取超时 (网络可能较慢)。${NC}\n"
+            printf "ℹ️ 请稍后手动执行此命令查看地址：\n"
+            printf "${CYAN}docker logs icmp9 | grep 'https://'${NC}\n\n"
+        fi
+    fi
+
 else
-    warn "已取消启动。您可以稍后运行 'docker compose up -d' 启动。"
+    warn "ℹ️ 已取消启动。您可以稍后运行 '$DOCKER_COMPOSE_CMD up -d' 启动。"
 fi
