@@ -56,7 +56,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 # 等待 Docker 服务就绪
-info "⏳ 等待 Docker 服务启动..."
+info "⏳ 等待检查 Docker 服务启动状态..."
 for i in $(seq 1 15); do
     if docker info >/dev/null 2>&1; then
         break
@@ -67,6 +67,8 @@ done
 if ! docker info >/dev/null 2>&1; then
     error "❌ Docker 服务未就绪，请稍后重试"
     exit 1
+else
+    info "✅ Docker 服务已就绪"
 fi
 
 # 检查 Docker Compose
@@ -249,13 +251,17 @@ if [ "$START_NOW" = "y" ] || [ "$START_NOW" = "Y" ]; then
         echo ""
 
         if [ -n "$FOUND_URL" ]; then
-            printf "\n${GREEN}✅ 临时域名获取成功！${NC}\n"
+            printf "\n${GREEN}✅ 临时域名获取成功！${NC}\n\n"
             printf "${GREEN}✈️ 节点订阅地址:${NC}\n"
             printf "${YELLOW}%s${NC}\n\n" "$FOUND_URL"
+            printf "${GREEN}📱 正在生成节点订阅二维码...${NC}\n"
+            docker exec icmp9 qrencode -t ANSIUTF8 -m 1 -l H "$FOUND_URL" || {
+                printf "\n${YELLOW}⚠️ 二维码生成失败。${NC}\n"
+            }
         else
             printf "\n${YELLOW}⚠️ 自动获取超时 (网络可能较慢)。${NC}\n"
             printf "ℹ️ 请稍后手动执行此命令查看地址：\n"
-            printf "${CYAN}docker logs icmp9 | grep 'https://'${NC}\n\n"
+            printf "${CYAN}docker logs icmp9${NC}\n\n"
         fi
     fi
 

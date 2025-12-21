@@ -38,6 +38,7 @@
 ![获取获取API KEYl 设置](https://github.com/user-attachments/assets/e55908be-f4e3-4294-aaee-4855fca2f3ec)
 
 ### [必需] 2.放行VPS的IP地址：单栈VPS仅需放行对应的单个IP地址；双栈VPS需同时放行IPv4和IPv6两个IP地址
+
 ![放行部署VPS的IP地址](https://github.com/user-attachments/assets/ceb9037d-3bdd-4789-9f71-207e6bc2c094)
 
 ### [可选] 3.使用cloudflare固定隧道模式
@@ -120,7 +121,7 @@ services:
       - ./data/subscribe:/root/subscribe
 ```
 
-### [可选] 6.节点订阅地址
+### [可选] 6.获取节点订阅地址
 
 **方法1：通过docker日志获取**
 
@@ -144,7 +145,7 @@ https://{ICMP9_SERVER_HOST}/{ICMP9_API_KEY}
 - 格式如： https://icmp9.nezha.pp.ua/b58828c1-4df5-4156-ee77-a889968533ae 
 
 
-### [可选] 7.节点不通的自助排查步骤
+### [可选] 7.节点不通时自助排查方法
 
 **1. 检查VPS时间是否正确，如果误差超过30秒，节点会出错**
 
