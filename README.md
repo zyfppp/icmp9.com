@@ -11,7 +11,7 @@
 
 ## 前提条件
 
-1. 拥有 **任意** 1台有公网IP的VPS，部署脚本命令只需要在这台VPS上执行。
+### 1. 拥有 **任意** 1台有公网IP的VPS，部署脚本命令只需要在这台VPS上执行。
    - VPS系统：支持Debian、Ubuntu、Alpine
    - VPS类型：支持独立VPS、NAT
    - VPS网络：支持IP双栈，支持IPv4或IPv6任意IP单栈
@@ -25,7 +25,7 @@
            - CPU：大于1核心
            - 硬盘：大于3G
 
-3. [可选] Cloudflare固定隧道模式，需要1个可以在Zero Trust创建隧道的Cloudflare账号
+### 2. [可选] Cloudflare固定隧道模式，需要1个可以在Zero Trust创建隧道的Cloudflare账号
 
 ---
 
@@ -147,48 +147,56 @@ https://{ICMP9_SERVER_HOST}/{ICMP9_API_KEY}
 
 ### [可选] 7.节点不通时自助排查方法
 
-**1. 检查VPS时间是否正确，如果误差超过30秒，节点会出错**
+#### 1.确认icmp9.com放行的IP地址已生效
 
-```bash
-date
-
-```
-- 修正方法：问ai关键词 “linux同步系统时间的shell命令”
-
-**2. 确认cloudflared tunnel是正常状态**
-
-<img height="300" alt="image" src="https://github.com/user-attachments/assets/1d37656d-d923-4d1f-8e63-dae405ffb6f6" /> <br>
-
-- 还需要在浏览器访问隧道域名，检查一下是否能正常打开
-
-<img height="300" src="https://github.com/user-attachments/assets/b1f67880-c479-48d0-a637-e23cf77f91be" /><br />
-
-**3. 确认icmp9.com放行的IP地址已生效，在部署脚本的VPS执行以下命令**
+在部署脚本的VPS执行以下命令
 
 ```bash
 curl -v https://tunnel.icmp9.com/af
 ```
 
-- 生效状态，返回400
+生效状态，返回 **400**
 
 <img height="350" src="https://github.com/user-attachments/assets/a3e13c7c-7d33-4938-866a-d76a3ff2eb7f" /><br />
 
-- 未生效状态，返回403
+未生效状态，返回 **403**
 
 <img height="350" alt="image" src="https://github.com/user-attachments/assets/2ff5064e-40ee-4959-a794-f97d6e7f2e6c" /><br />
 
-**4. 已安装warp服务VPS检查默认优先出站ip地址是否和icmp9.com填写的放行IP地址一致，在部署脚本的VPS执行以下命令**
+#### 2.固定隧道模式下，确认cloudflared tunnel是正常状态
+
+<img height="300" alt="image" src="https://github.com/user-attachments/assets/1d37656d-d923-4d1f-8e63-dae405ffb6f6" /> <br>
+
+**还需要在浏览器访问隧道域名，检查一下是否能正常打开**
+
+<img height="300" src="https://github.com/user-attachments/assets/b1f67880-c479-48d0-a637-e23cf77f91be" /><br />
+
+#### 3.已安装warp服务VPS核对默认优先出站ip地址与icmp9.com填写的放行IP地址一致
+
+在部署脚本的VPS执行以下命令
 
 ```bash
 curl ip.sb
 ```
 
-**如果IP地址不一致，用以下方法调整**
+如果IP地址不一致，用以下方法调整
 
 - 方法1. 用warp脚本调整vps的默认出站IP和icmp9.com放行IP地址一致
 - 方法2. 直接卸载掉warp服务
 
-**5. 填写的优选域名或IP在本地网络不能连通，重走步骤流程，更换其他优选域名或IP**
+#### 4.确认优选域名在本地可以正常连通访问
+
+如填写的优选域名或IP在本地网络不能连通，重走步骤流程，更换其他优选域名或IP
+
+#### 5.核对VPS系统时间和本地环境时间一致
+
+检查VPS时间是否正确，如果误差超过30秒，节点会出错
+
+```bash
+date
+
+```
+修正方法：问ai关键词 “linux同步系统时间的shell命令”
 
 ## 感谢
 
