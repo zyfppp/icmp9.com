@@ -37,9 +37,9 @@ if ! command -v docker >/dev/null 2>&1; then
         rc-update add docker default
         rc-service docker start
     else
-        # Debian / Ubuntu / CentOS
+        # Debian / Ubuntu
         if ! command -v curl >/dev/null 2>&1; then
-            apt-get update && apt-get install -y curl || yum install -y curl
+            apt-get update && apt-get install -y curl
         fi
         curl -fsSL https://get.docker.com | sh
         systemctl enable --now docker
@@ -204,7 +204,7 @@ if [ "$START_NOW" = "y" ] || [ "$START_NOW" = "Y" ]; then
     fi
 
     # --- 强制更新 ---
-    info "⬇️ 正在拉取最新镜像 (nap0o/icmp9:latest)..."
+    info "⬇️ 正在拉取最新镜像..."
     if ! $DOCKER_COMPOSE_CMD pull; then
         error "❌ 镜像拉取失败，请检查网络或 Docker 配置。"
         exit 1
